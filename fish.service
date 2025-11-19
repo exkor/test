@@ -1,0 +1,15 @@
+[Unit]
+Description=Discord Fish Bot Service
+After=network.target
+
+[Service]
+Type=simple
+User=ex
+WorkingDirectory=/home/ex/Documents/test
+EnvironmentFile=/home/ex/Documents/test/.env
+ExecStart=/usr/bin/go run /home/ex/Documents/test/fish.go
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
