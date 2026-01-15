@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -58,11 +59,22 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		s.ChannelMessageDelete(m.ChannelID, m.ID)
 		fmt.Println("Leaving all servers...")
 
+		wl, err := loadWhitelist()
+		if err != nil {
+			fmt.Println("Could not load whitelist (continuing with empty whitelist):", err)
+			wl = &Whitelist{}
+		}
+
 		guilds, err := s.UserGuilds(100, "", "", false)
 		if err != nil {
 			fmt.Println("Error getting guilds:", err)
 		} else {
 			for _, g := range guilds {
+				if contains(wl.Guilds, g.ID) {
+					fmt.Printf("Skipping whitelisted server: %s\n", g.Name)
+					continue
+				}
+
 				err := s.GuildLeave(g.ID)
 				if err != nil {
 					fmt.Printf("Error leaving %s: %v\n", g.Name, err)
@@ -79,13 +91,19 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		s.ChannelMessageDelete(m.ChannelID, m.ID)
 		fmt.Println("Removing all friends...")
 
+		wl, err := loadWhitelist()
+		if err != nil {
+			fmt.Println("Could not load whitelist (continuing with empty whitelist):", err)
+			wl = &Whitelist{}
+		}
+
 		type Relationship struct {
-			ID   string `json:"id"`
-			Type int    `json:"type"`
+			ID   string
+			Type int
 			User struct {
-				ID       string `json:"id"`
-				Username string `json:"username"`
-			} `json:"user"`
+				ID       string
+				Username string
+			}
 		}
 
 		var rels []Relationship
@@ -99,6 +117,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			} else {
 				for _, r := range rels {
 					if r.Type == 1 {
+						if contains(wl.Friends, r.ID) {
+							fmt.Printf("Skipping whitelisted friend: %s\n", r.User.Username)
+							continue
+						}
+
 						_, err := s.Request("DELETE", "/users/@me/relationships/"+r.ID, nil)
 						if err != nil {
 							fmt.Printf("Error removing friend %s: %v\n", r.User.Username, err)
@@ -112,5 +135,36 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		fmt.Println("Finished removing friends")
 	}
+}
 
+type Whitelist struct {
+	Guilds  []string
+	Friends []string
+}
+
+func loadWhitelist() (*Whitelist, error) {
+	guilds, _ := loadIDsFromFile("whitelist_servers.txt")
+	friends, _ := loadIDsFromFile("whitelist_friends.txt")
+
+	return &Whitelist{
+		Guilds:  guilds,
+		Friends: friends,
+	}, nil
+}
+
+func loadIDsFromFile(filename string) ([]string, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return []string{}, err
+	}
+	return strings.Fields(string(data)), nil
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
